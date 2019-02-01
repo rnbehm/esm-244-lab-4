@@ -1,0 +1,156 @@
+---
+title: "Week 4 Lab"
+author: "Rachel Behm"
+date: "January 31, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages
+```{r}
+library(tidyverse)
+library(Ecdat)
+library(plm)
+library(lmtest)
+library(car)
+```
+
+1. Nonlinear least squares
+```{r}
+CellGrowth <- read_csv("CellGrowth.csv")
+
+
+ggplot(CellGrowth, aes(x= Time, y = CellCount)) +geom_point()
+
+
+# now we gotta find estimates for logistic growth
+#N=A/1 + Be^(-rt)
+#carrying capacity= around 3.7k
+#starting pop= around 2k 
+#if N(0) is 2000 what is B? 
+
+BEstimate <- (3700-2000)/2000
+#B= 0.85
+#to find r-> when exponential? (look at graph)= around 0 to 5 (isolate this to find growth constant)
+
+lag_phase <- CellGrowth %>%
+  filter(Time < 5)
+
+#now lets plot to check to make sure the log is linear
+ggplot(lag_phase, aes(x=Time,y=log(CellCount))) + geom_point()
+#can confirm, looks linear, now lets find slope
+
+lm(log(CellCount)~Time, data= lag_phase)
+#tells us the coefficient is 0.1035= r
+
+```
+
+Now lets find model A,B, and r using Gauss-Newton for iterative convergence (non-linear least squares) bia nls()
+```{r}
+
+cell_fit<- nls(CellCount~ A/(1+B*exp(-r*Time)),
+               start=list(A=3700, B=0.85, r=0.1035),
+               data=CellGrowth,
+               trace=TRUE)
+#we want to find the acutal variables with this function structure. heres our guess for you to start with, use this data
+#trace= true shows you the trials
+
+#values on the left are the sq residuals, decrease then stop (thats how it knows its done)
+cell_fit
+
+#now we gonna call the coefficients so can store
+A<- coef(cell_fit)[1]
+#store the first coefficient from cell fit as A (so will change if model changes)
+B <- coef(cell_fit)[2]
+r<- coef(cell_fit)[3]
+
+#now we wanna plot them and overlay to compare to our guesses
+
+#create a new sequence of time values 
+time_seq<- seq(0,20, length =100)
+#a sequence from time 0 to time 20 with 100 observations
+
+#now lets plug that into new model with found variables
+cell_pred <-A/(1+B*exp(-r*time_seq))
+
+#now bind with time sequence data
+pred_df<- data.frame(time_seq, cell_pred)
+
+
+#lets graph and compare (add another layer - line to show model)
+ggplot(CellGrowth, aes(x=Time, y= CellCount)) +
+  geom_point(color="blue", size = 3) +
+  geom_line(data= pred_df, aes(x=time_seq, y=cell_pred), color= "orange", size=1)
+```
+
+Panel regression - first shot
+
+#states= entity var
+#time var =year
+#dependent var= packs per capita
+#outcome var= avg price
+
+```{r}
+cigs_panel<- Cigarette %>%
+  select(state,year,packpc, avgprs)
+
+ggplot(Cigarette, aes(x = avgprs, y = packpc, group = state)) +
+  geom_point(aes(color = state)) +
+  geom_smooth(method = "lm", 
+              aes(color = state), 
+              size = 0.3, 
+              se = FALSE)
+
+#average price affecting purchases in similar way (similar slopes)
+#now lets back out unobserved
+
+ggplot(Cigarette, aes(x = year, y = packpc, group = state)) +
+  geom_point(aes(color = state)) +
+  geom_smooth(method = "lm",
+              aes(color = state),
+              size = 0.3,
+              se = FALSE)
+#seems like a time-fixed affect but we gotta start with entity fixed
+
+
+```
+
+Entity fixed effects model (dont change over time)
+
+
+
+```{r}
+cigs_model <- plm(packpc~avgprs,
+                  data=cigs_panel,
+                  index= c("state", "year"),
+                  model="within")
+
+
+#within = model fixed effect
+#c= combination with
+cigs_model
+
+#"when we account for entity fixed effect this is the effect of pack price on avg pack per person"."every 1 increase on price, -0.32545 change on packs per person"
+
+coeftest(cigs_model, vcov = vcovHC(cigs_model, type="HC1"))
+#will tell us the error
+
+```
+
+Time fixed effects model (change over time) add it into the model
+```{r}
+et_cigs_model <- plm(packpc~avgprs,
+                    data= cigs_panel,
+                    index = c("state","year"),
+                    model="within",
+                    effect= "twoways")
+et_cigs_model
+
+#now lets see if this is actually better via pftest
+pFtest(et_cigs_model,cigs_model)
+#compare new to old
+```
+

@@ -8,9 +8,9 @@ ui <- fluidPage(
   
   # Application title
   titlePanel("244 Example: Old Faithful Geyser Data"),
-  
+  #how to make the nice view of the tabs
    navbarPage("Here's a main title!",
-             
+             #this tab only has text
              tabPanel("Summary",
                       h1("A header!"),
                       h2("A secondary header..."),
@@ -20,7 +20,8 @@ ui <- fluidPage(
                       p("You get the idea...)")
                       
                       ),
-             
+           #histogram panel- like what you wanna do 
+           #the histogram is made in the server code and called in this code
              tabPanel("Histogram",
                       
                       # Sidebar with a slider input for number of bins 
@@ -43,7 +44,7 @@ ui <- fluidPage(
                         )
                       )),
              
-             
+             #call this specific scatterplot and let users choose between these three colors
              tabPanel("Scatterplot",
                       
                       # Sidebar with a slider input for number of bins 
